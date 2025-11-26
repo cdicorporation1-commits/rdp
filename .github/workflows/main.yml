@@ -22,7 +22,6 @@ jobs:
         run: |
           Invoke-WebRequest https://github.com/rustdesk/rustdesk/releases/download/1.2.3/rustdesk-1.2.3-x86_64.exe -OutFile rustdesk.exe
           Invoke-WebRequest https://raw.githubusercontent.com/Riders004/rdp/master/wallpaper.bat -OutFile wallpaper.bat
-          Invoke-WebRequest https://raw.githubusercontent.com/microsoft/Windows-classic-samples/main/Samples/Win7Samples/winui/Shell/AppSecurity/restartmanager/restartmanager.cpp -OutFile dummy.cpp
 
       - name: 🚀 Instalar y Configurar RustDesk
         shell: pwsh
@@ -72,11 +71,6 @@ jobs:
           New-LocalUser -Name $username -Password (ConvertTo-SecureString $password -AsPlainText -Force) -FullName "RustDesk User" -Description "Remote Access User"
           Add-LocalGroupMember -Group "Administrators" -Member $username
           Add-LocalGroupMember -Group "Users" -Member $username
-          
-          # Configurar auto-login (opcional)
-          reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d 1 /f
-          reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUsername /t REG_SZ /d $username /f
-          reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d $password /f
 
       - name: ⚙️ Optimizar Windows para Acceso Remoto
         shell: pwsh
@@ -213,9 +207,13 @@ ESTA SESIÓN PERMANECERÁ ACTIVA INDEFINIDAMENTE
               
               # Informe de estado
               if ($count % 12 -eq 0) {
+                  $currentId = "${{ github.event.inputs.rustdesk_id }}"
+                  if (-not $currentId) {
+                      $currentId = "GH" + (Get-Date -Format "yyyyMMddHHmmss")
+                  }
                   Write-Host "=========================================="
                   Write-Host "✅ RUSTDESK ACTIVO - $currentTime"
-                  Write-Host "🆔 ID: $("${{ github.event.inputs.rustdesk_id }}" ? "${{ github.event.inputs.rustdesk_id }}" : "GH" + (Get-Date -Format "yyyyMMddHHmmss"))"
+                  Write-Host "🆔 ID: $currentId"
                   Write-Host "⏰ Tiempo activo: $count ciclos (~$([math]::Round($count/12)) horas)"
                   Write-Host "🔒 Estado: CONECTADO"
                   Write-Host "=========================================="
