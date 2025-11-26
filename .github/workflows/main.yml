@@ -1,160 +1,130 @@
 name: WINDOWS RDP + RUSTDESK - TIEMPO ILIMITADO
 
 on:
-workflow_dispatch:
-inputs:
-rustdesk_id:
-type: string
-description: 'RustDesk ID (opcional)'
-required: false
-rustdesk_password:
-type: string
-description: 'RustDesk Password (opcional)'
-required: false
+  workflow_dispatch:
+    inputs:
+      rustdesk_id:
+        type: string
+        description: 'RustDesk ID (opcional)'
+        required: false
+      rustdesk_password:
+        type: string
+        description: 'RustDesk Password (opcional)'
+        required: false
 
 jobs:
-build:
-runs-on: windows-latest
-# Advertencia: GitHub Actions tiene un límite de duración de trabajo,
-# generalmente 6 horas. El bucle de abajo simula actividad para evitar timeouts por inactividad.
-timeout-minutes: 360  # Máximo de 6 horas (oajustar según el límite real de tu repositorio)
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360
 
-steps:
-  - name: 🔽 Descargar RustDesk y Archivos
-    run: |
-      Invoke-WebRequest https://github.com/rustdesk/rustdesk/releases/download/1.2.3/rustdesk-1.2.3-x86_64.exe -OutFile rustdesk.exe
-      # Se omite 'wallpaper.bat' ya que la URL proporcionada es raw.githubusercontent.com
-      
-  - name: 🚀 Instalar y Configurar RustDesk
-    shell: pwsh
-    run: |
-      # Instalar RustDesk silenciosamente
-      Start-Process -FilePath ".\rustdesk.exe" -ArgumentList "--silent-install" -Wait
-      Start-Sleep -Seconds 10
-      
-      $rustdeskPath = "C:\Program Files\RustDesk\rustdesk.exe"
-      if (Test-Path $rustdeskPath) {
-          # Crear acceso directo en inicio para autoinicio
-          $WshShell = New-Object -comObject WScript.Shell
-          $Shortcut = $WshShell.CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\RustDesk.lnk")
-          $Shortcut.TargetPath = $rustdeskPath
-          $Shortcut.WorkingDirectory = "C:\Program Files\RustDesk"
-          $Shortcut.Save()
+    steps:
+      - name: 🔽 Descargar RustDesk y Archivos
+        run: |
+          Invoke-WebRequest https://github.com/rustdesk/rustdesk/releases/download/1.2.3/rustdesk-1.2.3-x86_64.exe -OutFile rustdesk.exe
+
+      - name: 🚀 Instalar y Configurar RustDesk
+        shell: pwsh
+        run: |
+          Start-Process -FilePath ".\rustdesk.exe" -ArgumentList "--silent-install" -Wait
+          Start-Sleep -Seconds 10
           
-          # Iniciar RustDesk
-          Start-Process -FilePath $rustdeskPath
-      }
-      Start-Sleep -Seconds 10
-      
-  - name: 🔧 Configurar RustDesk vía Registro y Optimizar SO
-    shell: pwsh
-    run: |
-      # Configurar opciones avanzadas via registro
-      reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "auto-start" /t REG_DWORD /d 1 /f
-      reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "allow-auto-update" /t REG_DWORD /d 0 /f
-      reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "disable-audio" /t REG_DWORD /d 0 /f
-      reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "lock-after-session-end" /t REG_DWORD /d 0 /f
-      reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "show-remote-cursor" /t REG_DWORD /d 1 /f
-      reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "screen-resolution" /t REG_SZ /d "1920x1080" /f
-      reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "quality" /t REG_SZ /d "balanced" /f
-      
-      # Optimizar Windows
-      reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" /v NoAutoUpdate /t REG_DWORD /d 1 /f
-      powercfg /h off
-      powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c # Alto rendimiento
+          $rustdeskPath = "C:\Program Files\RustDesk\rustdesk.exe"
+          if (Test-Path $rustdeskPath) {
+              $WshShell = New-Object -comObject WScript.Shell
+              $Shortcut = $WshShell.CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\RustDesk.lnk")
+              $Shortcut.TargetPath = $rustdeskPath
+              $Shortcut.WorkingDirectory = "C:\Program Files\RustDesk"
+              $Shortcut.Save()
+              Start-Process -FilePath $rustdeskPath
+          }
+          Start-Sleep -Seconds 10
 
-      # Deshabilitar firewall (para pruebas, NO recomendado en entornos reales)
-      netsh advfirewall firewall add rule name="RustDesk" dir=in action=allow program="C:\Program Files\RustDesk\rustdesk.exe" enable=yes
-      
-  - name: 👤 Crear Usuario y Configurar Contraseña RDP
-    shell: pwsh
-    run: |
-      $username = "rustuser"
-      $password = "RustDesk#2024!"
-      
-      New-LocalUser -Name $username -Password (ConvertTo-SecureString $password -AsPlainText -Force) -FullName "RustDesk User" -Description "Remote Access User"
-      Add-LocalGroupMember -Group "Administrators" -Member $username
-      
-  - name: 📡 Configurar ID y Contraseña de RustDesk
-    shell: pwsh
-    run: |
-      $rustdeskConfigDir = "$env:APPDATA\RustDesk\config"
-      $rustdeskConfigPath = "$rustdeskConfigDir\RustDesk.toml"
-      
-      # Generar valores si no se proporcionan
-      $customId = "${{ github.event.inputs.rustdesk_id }}"
-      $customPassword = "${{ github.event.inputs.rustdesk_password }}"
-      
-      if (-not $customId) {
-          $customId = "GH" + (Get-Date -Format "HHmmss")
-      }
-      
-      if (-not $customPassword) {
-          $customPassword = "Rust" + (Get-Random -Minimum 1000 -Maximum 9999) + "!"
-      }
-      
-      # Crear la configuración TOML con los valores personalizados
-      $configContent = @"
+      - name: 🔧 Configurar RustDesk vía Registro y Optimizar SO
+        shell: pwsh
+        run: |
+          reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "auto-start" /t REG_DWORD /d 1 /f
+          reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "allow-auto-update" /t REG_DWORD /d 0 /f
+          reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "disable-audio" /t REG_DWORD /d 0 /f
+          reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "lock-after-session-end" /t REG_DWORD /d 0 /f
+          reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "show-remote-cursor" /t REG_DWORD /d 1 /f
+          reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "screen-resolution" /t REG_SZ /d "1920x1080" /f
+          reg add "HKEY_CURRENT_USER\Software\RustDesk" /v "quality" /t REG_SZ /d "balanced" /f
+          
+          reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" /v NoAutoUpdate /t REG_DWORD /d 1 /f
+          powercfg /h off
+          powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+          netsh advfirewall firewall add rule name="RustDesk" dir=in action=allow program="C:\Program Files\RustDesk\rustdesk.exe" enable=yes
 
+      - name: 👤 Crear Usuario y Configurar Contraseña RDP
+        shell: pwsh
+        run: |
+          $username = "rustuser"
+          $password = "RustDesk#2024!"
+          New-LocalUser -Name $username -Password (ConvertTo-SecureString $password -AsPlainText -Force) -FullName "RustDesk User" -Description "Remote Access User"
+          Add-LocalGroupMember -Group "Administrators" -Member $username
 
+      - name: 📡 Configurar ID y Contraseña de RustDesk
+        shell: pwsh
+        run: |
+          $rustdeskConfigDir = "$env:APPDATA\RustDesk\config"
+          $rustdeskConfigPath = "$rustdeskConfigDir\RustDesk.toml"
+          $customId = "${{ github.event.inputs.rustdesk_id }}"
+          $customPassword = "${{ github.event.inputs.rustdesk_password }}"
+          
+          if (-not $customId) {
+              $customId = "GH" + (Get-Date -Format "HHmmss")
+          }
+          if (-not $customPassword) {
+              $customPassword = "Rust" + (Get-Random -Minimum 1000 -Maximum 9999) + "!"
+          }
+          
+          $configContent = @"
 encrypted = true
 id = "$customId"
 password = "$customPassword"
 "@
-
-      New-Item -ItemType Directory -Path $rustdeskConfigDir -Force
-      Set-Content -Path $rustdeskConfigPath -Value $configContent
-      
-      # Reiniciar RustDesk para aplicar la nueva configuración
-      Get-Process -Name "rustdesk" -ErrorAction SilentlyContinue | Stop-Process -Force
-      Start-Sleep -Seconds 5
-      Start-Process -FilePath "C:\Program Files\RustDesk\rustdesk.exe"
-      
-  - name: 📢 Mostrar Información de Conexión
-    shell: pwsh
-    run: |
-      # Recalcular ID y Contraseña si no fueron proporcionados (para el output)
-      $customId = "${{ github.event.inputs.rustdesk_id }}"
-      $customPassword = "${{ github.event.inputs.rustdesk_password }}"
-      
-      if (-not $customId) {
-          $customId = "GH" + (Get-Date -Format "HHmmss")
-      }
-      
-      if (-not $customPassword) {
-          $customPassword = "Rust" + (Get-Random -Minimum 1000 -Maximum 9999) + "!"
-      }
-      
-      Write-Host "=========================================="
-      Write-Host "🚀 RUSTDESK CONFIGURADO"
-      Write-Host "=========================================="
-      Write-Host "🆔 RustDesk ID: $customId"
-      Write-Host "🔑 RustDesk Password: $customPassword"
-      Write-Host "👤 Usuario Windows: rustuser"
-      Write-Host "🔐 Contraseña Windows: RustDesk#2024!"
-      Write-Host "⏰ Duración Máxima: 6 Horas (por restricción de GitHub)"
-      Write-Host "=========================================="
-      
-  - name: 🔄 Bucle de Mantenimiento Infinito
-    shell: pwsh
-    run: |
-      $count = 0
-      while ($true) {
-          $count++
-          $currentTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-
-          # Verificar y reiniciar RustDesk si es necesario
-          $rustdeskProcess = Get-Process -Name "rustdesk" -ErrorAction SilentlyContinue
-          if (-not $rustdeskProcess) {
-              Write-Host "🔄 Reiniciando RustDesk... (Ciclo $count)"
-              Start-Process -FilePath "C:\Program Files\RustDesk\rustdesk.exe"
-              Start-Sleep -Seconds 10
-          }
-
-          # Simular actividad para el runner
-          Write-Host "🔄 Manteniendo la conexión activa... Ciclo: $count - $currentTime"
+          New-Item -ItemType Directory -Path $rustdeskConfigDir -Force
+          Set-Content -Path $rustdeskConfigPath -Value $configContent
           
-          # Detiene la ejecución por 5 minutos antes de la siguiente verificación/keepalive
-          Start-Sleep -Seconds 300
-      }
+          Get-Process -Name "rustdesk" -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 5
+          Start-Process -FilePath "C:\Program Files\RustDesk\rustdesk.exe"
 
+      - name: 📢 Mostrar Información de Conexión
+        shell: pwsh
+        run: |
+          $customId = "${{ github.event.inputs.rustdesk_id }}"
+          $customPassword = "${{ github.event.inputs.rustdesk_password }}"
+          
+          if (-not $customId) {
+              $customId = "GH" + (Get-Date -Format "HHmmss")
+          }
+          if (-not $customPassword) {
+              $customPassword = "Rust" + (Get-Random -Minimum 1000 -Maximum 9999) + "!"
+          }
+          
+          Write-Host "=========================================="
+          Write-Host "🚀 RUSTDESK CONFIGURADO"
+          Write-Host "=========================================="
+          Write-Host "🆔 RustDesk ID: $customId"
+          Write-Host "🔑 RustDesk Password: $customPassword"
+          Write-Host "👤 Usuario Windows: rustuser"
+          Write-Host "🔐 Contraseña Windows: RustDesk#2024!"
+          Write-Host "⏰ Duración Máxima: 6 Horas (por restricción de GitHub)"
+          Write-Host "=========================================="
+
+      - name: 🔄 Bucle de Mantenimiento Infinito
+        shell: pwsh
+        run: |
+          while ($true) {
+              $currentTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+              
+              if (-not (Get-Process -Name "rustdesk" -ErrorAction SilentlyContinue)) {
+                  Write-Host "🔄 Reiniciando RustDesk... $(Get-Date)"
+                  Start-Process -FilePath "C:\Program Files\RustDesk\rustdesk.exe"
+                  Start-Sleep -Seconds 10
+              }
+              
+              Write-Host "🔄 Manteniendo la conexión activa... $currentTime"
+              Start-Sleep -Seconds 300
+          }
